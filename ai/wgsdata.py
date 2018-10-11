@@ -12,6 +12,23 @@ def updateNotMyCityList(l_cities, flag_color):
         common.echosentence_color('wgsdata > updateNotMyCityList():{}'.format(str(e)))
         raise
 
+def mainCity(l_cities, flag_color):
+    '''更新非我方城市列表'''
+    try:
+        assert len(l_cities) % 3 == 0
+        return [l_cities[i] for i in range(len(l_cities)) if i % 3 == 0 and l_cities[i+2] == 80][0] # 主要夺控点坐标
+    except Exception as e:
+        common.echosentence_color('wgsdata > mainCity():{}'.format(str(e)))
+        raise
+
+def secondaryCity(l_cities, flag_color):
+    '''更新非我方城市列表'''
+    try:
+        assert len(l_cities) % 3 == 0
+        return [l_cities[i] for i in range(len(l_cities)) if i % 3 == 0 and l_cities[i+2] == 50][0] # 主要夺控点坐标
+    except Exception as e:
+        common.echosentence_color('wgsdata > secondaryCity():{}'.format(str(e)))
+        raise
 
 
 

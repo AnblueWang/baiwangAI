@@ -1,5 +1,5 @@
 #coding:utf-8
-import wgobject,wgruler,wgsdata,common
+import wgobject,wgruler,wgsdata,common,wgstage
 import random,time,sys,pandas
 sys.path.append('../interface/')
 
@@ -134,16 +134,66 @@ class AI:
 
     def doAction(self):
         try:
+            if wgstage.isMyMoveHuanJie(self.dic_metadata['l_stage'],self.flag_color):
+                return self.doMyMoveHuanJieAction()
+            if wgstage.isMyFinalShootHuanJie(self.dic_metadata['l_stage'],self.flag_color):
+                return self.doMyFinalShootingHuanJieAction()
+            if wgstage.isOpMoveHuanJie(self.dic_metadata['l_stage'],self.flag_color):
+                return self.doOpMoveHuanJieAction()
+            return False
+        except Exception as e:
+            print('error in run_onestep(): ' + str(e))
+            self.__del__()
+            raise
+        except KeyboardInterrupt as k:
+            print('error in run_onestep(): ' + str(k))
+            self.__del__()
+            raise
+
+    def doOpMoveHuanJieAction(self):
+        try:
             res = False
-            # 当前态势
             l_ourbops = self.dic_metadata['l_obops'] #我方算子
             l_enemybops = self.dic_metadata['l_ubops'] #敌方算子
-            l_cities = self.dic_metadata['l_cities'] #夺控点列表
-            # 夺控动作
-            for cur_bop in l_ourbops:
-                if self.genOccupyAction(cur_bop): #判断是否可以夺控
-                    self.obj_interface.setOccupy(cur_bop.ObjID) #调用接口执行夺控动作
-                    res = True
+            while wgstage.isOpMoveHuanJie(self.dic_metadata['l_stage'],self.flag_color):
+                # 射击动作
+                # 选择最大伤害的敌人
+                for att_bop in l_ourbops:
+                    Flag = False
+                    Obj = None
+                    Maxf = 0
+                    weapon = -1
+                    for obj_bop in l_enemybops:
+                        flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
+                        if flag:
+                            Flag = True
+                            computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
+                            print("computeFlag: ",computeFlag,"value: ",f, "weaponID: ",weaponID)
+                            if computeFlag == 0 and f > Maxf:
+                                Maxf = f
+                                Obj = obj_bop
+                                weapon = weaponID
+                        if Flag and Obj is not None: #可以射击
+                            exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
+                            if exe_success == 0: # 执行成功
+                                res = True
+                self.dic_metadata['l_stage'] = self.obj_interface.getSimTime()
+            return res
+        except Exception as e:
+            print('error in doOpMoveHuanJieAction(): ' + str(e))
+            self.__del__()
+            raise
+        except KeyboardInterrupt as k:
+            print('error in doOpMoveHuanJieAction(): ' + str(k))
+            self.__del__()
+            raise
+
+    def doMyFinalShootingHuanJieAction(self):
+
+        try:
+            res = False
+            l_ourbops = self.dic_metadata['l_obops'] #我方算子
+            l_enemybops = self.dic_metadata['l_ubops'] #敌方算子
             # 射击动作
             # 选择最大伤害的敌人
             for att_bop in l_ourbops:
@@ -165,21 +215,34 @@ class AI:
                         exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
                         if exe_success == 0: # 执行成功
                             res = True
+                return res
+        except Exception as e:
+            print('error in doMyFinalShootingHuanJieAction(): ' + str(e))
+            self.__del__()
+            raise
+        except KeyboardInterrupt as k:
+            print('error in doMyFinalShootingHuanJieAction(): ' + str(k))
+            self.__del__()
+            raise
 
-            l_cityloc = [l_cities[i] for i in range(len(l_cities)) if i % 3 == 0] # 所有夺控点坐标
-            # 人员下车
+
+    def doMyMoveHuanJieAction(self):
+        try:
+            res = False
+            l_ourbops = self.dic_metadata['l_obops'] #我方算子
+            l_enemybops = self.dic_metadata['l_ubops'] #敌方算子
+            l_cities = self.dic_metadata['l_cities'] #夺控点列表
+
+            # 夺控动作
             for cur_bop in l_ourbops:
-                if cur_bop.ObjTypeX == 1 and cur_bop.ObjSonNum == 1:  # 载人车辆
-                    for city_loc in l_cityloc:
-                        _, dis = self.obj_interface.getMapDistance(cur_bop.ObjPos, city_loc) # 距离夺控点的距离
-                        if dis <= 3: # 距离<3下车
-                            if self.genGetOffAction(cur_bop): #判断是否满足下车条件
-                                self.obj_interface.setGetoff(cur_bop.ObjID) # 调用接口执行下车动作
-                                res = True
-
-            city_loc = [l_cities[i] for i in range(len(l_cities)) if i % 3 == 0 and l_cities[i+2] == 80][0] # 主要夺控点坐标
-
-            # 机动
+                if self.genOccupyAction(cur_bop): #判断是否可以夺控
+                    self.obj_interface.setOccupy(cur_bop.ObjID) #调用接口执行夺控动作
+                    res = True
+            
+            city_loc = wgsdata.mainCity(l_cities,self.flag_color)
+            if city_loc in wgsdata.updateNotMyCityList(l_cities,self.flag_color):
+                city_loc = wgsdata.secondaryCity(l_cities,self.flag_color)
+            # 机动动作
             for cur_bop in l_ourbops:
                 flag_move = True
                 if cur_bop.ObjTypeX in [1,2]:
@@ -200,15 +263,47 @@ class AI:
                         if flag and l_path:
                             self.obj_interface.setMove(cur_bop.ObjID,l_path) #调用接口函数执行机动动作
                             res = True
-            return res  #没有动作执行返回False
+
+            # 人员下车
+            for cur_bop in l_ourbops:
+                if cur_bop.ObjTypeX == 1 and cur_bop.ObjSonNum == 1:  # 载人车辆
+                    _, dis = self.obj_interface.getMapDistance(cur_bop.ObjPos, city_loc) # 距离夺控点的距离
+                    if dis <= 3 or (dis < 10 and common.getSpecifiedBopByPos(l_enemybops, city_loc)): # 距离目标<3 或者目标被占且<10 下车
+                        if self.genGetOffAction(cur_bop): #判断是否满足下车条件
+                            self.obj_interface.setGetoff(cur_bop.ObjID) # 调用接口执行下车动作
+                            res = True
+
+            # 射击动作
+            # 选择最大伤害的敌人
+            for att_bop in l_ourbops:
+                Flag = False
+                Obj = None
+                Maxf = 0
+                weapon = -1
+                for obj_bop in l_enemybops:
+                    flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
+                    if flag:
+                        Flag = True
+                        computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
+                        if computeFlag == 0 and f > Maxf:
+                            Maxf = f
+                            Obj = obj_bop
+                            weapon = weaponID
+                    if Flag and Obj is not None: #可以射击
+                        exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
+                        if exe_success == 0: # 执行成功
+                            res = True
+
+            return res 
         except Exception as e:
-            print('error in run_onestep(): ' + str(e))
+            print('error in doMyMoveHuanJieAction(): ' + str(e))
             self.__del__()
             raise
         except KeyboardInterrupt as k:
-            print('error in run_onestep(): ' + str(k))
+            print('error in doMyMoveHuanJieAction(): ' + str(k))
             self.__del__()
             raise
+            
 
     def genShootAction(self, bop_attacker, bop_obj):
         '''

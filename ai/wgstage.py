@@ -20,6 +20,9 @@ def isMyStage(list_g_stage, flag_mycolor):
 '''是否是我方间瞄环节'''
 def isMyJMHuanJie(list_g_stage, flag_mycolor):
     return isMyStage(list_g_stage, flag_mycolor) and isJMHuanJie(list_g_stage)
+'''是否是对方机动环节'''
+def isOpMoveHuanJie(list_g_stage, flag_mycolor):
+    return (not isMyStage(list_g_stage, flag_mycolor)) and isMoveHuanJie(list_g_stage)
 '''是否是我方机动环节 '''
 def isMyMoveHuanJie(list_g_stage, flag_mycolor):
     return isMyStage(list_g_stage, flag_mycolor) and isMoveHuanJie(list_g_stage)
