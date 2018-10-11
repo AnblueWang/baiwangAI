@@ -1,6 +1,6 @@
 #coding:utf-8
 import wgobject,wgruler,wgsdata,common
-import random,time,sys
+import random,time,sys,pandas
 sys.path.append('../interface/')
 
 '''AI类 调用接口读取态势数据，生成动作以及动作执行'''
@@ -17,6 +17,7 @@ class AI:
             # l_obops:我方算子列表; l_ubops:敌方算子列表; l_cities:夺控点信息列表; l_stage:阶段信息
             self.dic_metadata = {'l_obops': [], 'l_ubops': [], 'l_cities': [], 'l_stage': []}
             self.updateSDData() # 更新态势数据
+            
         except Exception as e:
             common.echosentence_color(" " + str(e))
             self.__del__()
@@ -66,7 +67,8 @@ class AI:
                 bop = wgobject.Gen_Op(row)
                 bop = wgruler.cvtMapBop2AIBop(bop,self.dic_metadata['l_stage'])
                 self.dic_metadata['l_obops'].append(bop)
-        # 敌方算子
+
+            # 敌方算子
             self.dic_metadata['l_ubops'] = []
             df_enemyOp = self.obj_interface.getEnemyOperatorsData()
             for index,row in df_enemyOp.iterrows(): #敌方算子不包括血量为0的算子
@@ -143,11 +145,24 @@ class AI:
                     self.obj_interface.setOccupy(cur_bop.ObjID) #调用接口执行夺控动作
                     res = True
             # 射击动作
+            # 选择最大伤害的敌人
             for att_bop in l_ourbops:
+                Flag = False
+                Obj = None
+                Maxf = 0
+                weapon = -1
                 for obj_bop in l_enemybops:
                     flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
-                    if flag: #可以射击
-                        exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,obj_bop.ObjID,(int)(weaponID)) #调用接口执行射击动作
+                    if flag:
+                        Flag = True
+                        computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
+                        print("computeFlag: ",computeFlag,"value: ",f, "weaponID: ",weaponID)
+                        if computeFlag == 0 and f > Maxf:
+                            Maxf = f
+                            Obj = obj_bop
+                            weapon = weaponID
+                    if Flag and Obj is not None: #可以射击
+                        exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
                         if exe_success == 0: # 执行成功
                             res = True
 
@@ -162,7 +177,8 @@ class AI:
                                 self.obj_interface.setGetoff(cur_bop.ObjID) # 调用接口执行下车动作
                                 res = True
 
-            city_loc = random.sample(l_cityloc, 1)[0]  #随机选择一个夺控点机动
+            city_loc = [l_cities[i] for i in range(len(l_cities)) if i % 3 == 0 and l_cities[i+2] == 80][0] # 主要夺控点坐标
+
             # 机动
             for cur_bop in l_ourbops:
                 flag_move = True
@@ -178,6 +194,8 @@ class AI:
                             break
                 if flag_move:
                     if cur_bop.ObjPos != city_loc:
+                        if cur_bop.ObjTypeX == 0:
+                            city_loc = city_loc + 1
                         flag,l_path = self.genMoveAction(cur_bop, city_loc)  # 判断能否执行机动动作，如果能，返回机动路径
                         if flag and l_path:
                             self.obj_interface.setMove(cur_bop.ObjID,l_path) #调用接口函数执行机动动作
