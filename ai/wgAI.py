@@ -16,6 +16,7 @@ class AI:
             self.flag_color = 0 if flag_color == 'RED' else 1
             # l_obops:我方算子列表; l_ubops:敌方算子列表; l_cities:夺控点信息列表; l_stage:阶段信息
             self.dic_metadata = {'l_obops': [], 'l_ubops': [], 'l_cities': [], 'l_stage': []}
+            self.dic_targets = {}
             self.updateSDData() # 更新态势数据
             
         except Exception as e:
@@ -41,7 +42,7 @@ class AI:
                 flag_validAction = self.doAction() #执行动作
                 if( not flag_validAction): #没有有效动作
                     self.wait(self.dic_metadata,self.flag_color) #等待下个有效动作，打印等待信息
-                time.sleep(0.5)
+                time.sleep(0.1)
         except Exception as e:
             common.echosentence_color(" " + str(e))
             self.__del__()
@@ -168,7 +169,6 @@ class AI:
                         if flag:
                             Flag = True
                             computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
-                            print("computeFlag: ",computeFlag,"value: ",f, "weaponID: ",weaponID)
                             if computeFlag == 0 and f > Maxf:
                                 Maxf = f
                                 Obj = obj_bop
@@ -206,7 +206,6 @@ class AI:
                     if flag:
                         Flag = True
                         computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
-                        print("computeFlag: ",computeFlag,"value: ",f, "weaponID: ",weaponID)
                         if computeFlag == 0 and f > Maxf:
                             Maxf = f
                             Obj = obj_bop
@@ -240,26 +239,27 @@ class AI:
                     res = True
             
             city_loc = wgsdata.mainCity(l_cities,self.flag_color)
-            if city_loc in wgsdata.updateNotMyCityList(l_cities,self.flag_color):
+            if city_loc in wgsdata.updateNotMyCityList(l_cities,self.flag_color) and common.getSpecifiedBopByPos(l_enemybops, city_loc):
                 city_loc = wgsdata.secondaryCity(l_cities,self.flag_color)
             # 机动动作
             for cur_bop in l_ourbops:
                 flag_move = True
                 if cur_bop.ObjTypeX in [1,2]:
-                    '''，人和战车能观察到敌方算子且距离小于10，放弃机动机会'''
+                    '''，人和战车能观察到敌方算子且距离小于6，放弃机动机会'''
                     cur_ser = wgobject.bop2Ser(cur_bop)
                     for ubop in l_enemybops:
                         obj_ser = wgobject.bop2Ser(ubop)
                         _,flag_see = self.obj_interface.flagISU(cur_ser,obj_ser)
                         _,distance = self.obj_interface.getMapDistance(cur_bop.ObjPos,ubop.ObjPos)
-                        if flag_see and distance <= 10:
+                        if flag_see and distance <= 6:
                             flag_move = False
                             break
                 if flag_move:
                     if cur_bop.ObjPos != city_loc:
                         if cur_bop.ObjTypeX == 0:
-                            city_loc = city_loc + 1
-                        flag,l_path = self.genMoveAction(cur_bop, city_loc)  # 判断能否执行机动动作，如果能，返回机动路径
+                            flag,l_path = self.genMoveAction(cur_bop, city_loc+2)  # 判断能否执行机动动作，如果能，返回机动路径
+                        else:
+                            flag,l_path = self.genMoveAction(cur_bop, city_loc)
                         if flag and l_path:
                             self.obj_interface.setMove(cur_bop.ObjID,l_path) #调用接口函数执行机动动作
                             res = True
@@ -268,31 +268,15 @@ class AI:
             for cur_bop in l_ourbops:
                 if cur_bop.ObjTypeX == 1 and cur_bop.ObjSonNum == 1:  # 载人车辆
                     _, dis = self.obj_interface.getMapDistance(cur_bop.ObjPos, city_loc) # 距离夺控点的距离
-                    if dis <= 3 or (dis < 10 and common.getSpecifiedBopByPos(l_enemybops, city_loc)): # 距离目标<3 或者目标被占且<10 下车
+                    if dis <= 3 or (dis < 6 and common.getSpecifiedBopByPos(l_enemybops, city_loc)): # 距离目标<3 或者目标被占且<10 下车
                         if self.genGetOffAction(cur_bop): #判断是否满足下车条件
                             self.obj_interface.setGetoff(cur_bop.ObjID) # 调用接口执行下车动作
                             res = True
 
             # 射击动作
-            # 选择最大伤害的敌人
             for att_bop in l_ourbops:
-                Flag = False
-                Obj = None
-                Maxf = 0
-                weapon = -1
-                for obj_bop in l_enemybops:
-                    flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
-                    if flag:
-                        Flag = True
-                        computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
-                        if computeFlag == 0 and f > Maxf:
-                            Maxf = f
-                            Obj = obj_bop
-                            weapon = weaponID
-                    if Flag and Obj is not None: #可以射击
-                        exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
-                        if exe_success == 0: # 执行成功
-                            res = True
+                if att_bop.ObjTypeX == 0:
+                    res = res or self.doMoveShootAction(att_bop)
 
             return res 
         except Exception as e:
@@ -304,6 +288,84 @@ class AI:
             self.__del__()
             raise
             
+    # def doTankMoveAction(self,tank_bop):
+
+    # def doVehicleMoveAction(slef,vehicle_bop):
+    #     ''' 战车在机动环节动作为若当前主要争夺点没有我方旗子且没有我方旗子目标是它，则向其移动'''
+    #     res = False
+    #     # 夺控动作
+    #     if self.genOccupyAction(vehicle_bop): #判断是否可以夺控
+    #         self.obj_interface.setOccupy(vehicle_bop.ObjID) #调用接口执行夺控动作
+    #         res = True
+
+    #     main_city = wgsdata.mainCity(self.dic_metadata['l_cities'],self.flag_color)
+    #     bopId = common.getBopIdentity(vehicle_bop)
+
+    #     #设定目标
+    #     cur_ser = wgobject.bop2Ser(vehicle_bop)
+    #     for ubop in l_enemybops:
+    #         obj_ser = wgobject.bop2Ser(ubop)
+    #         _,flag_see = self.obj_interface.flagISU(cur_ser,obj_ser)
+    #         _,distance = self.obj_interface.getMapDistance(cur_bop.ObjPos,ubop.ObjPos)
+    #         if flag_see and distance <= 6:
+    #             flag_move = False
+    #             break
+
+    #     if main_city not in self.dic_targets.values():
+    #         self.dic_targets[bopId] = main_city
+    #     else:
+    #         self.dic_targets[bopId] = vehicle_bop.ObjPos
+    #     #移动
+    #     flag,l_path = self.genMoveAction(vechicle_bop, main_city)
+    #     if flag and l_path:
+    #         self.obj_interface.setMove(vehicle_bop.ObjID,l_path) #调用接口函数执行机动动作
+    #         return True
+
+    # def doSoldierMoveAction(self,soldier_bop):
+    #     ''' 步兵在机动环节动作为若当前主要争夺点没有我方旗子且没有我方旗子目标是它，则向其移动一步'''
+    #     res = False
+    #     # 夺控动作
+    #     if self.genOccupyAction(soldier_bop): #判断是否可以夺控
+    #         self.obj_interface.setOccupy(soldier_bop.ObjID) #调用接口执行夺控动作
+    #         res = True
+
+    #     main_city = wgsdata.mainCity(self.dic_metadata['l_cities'],self.flag_color)
+    #     bopId = common.getBopIdentity(soldier_bop)
+    #     #设定目标
+    #     if main_city not in self.dic_targets.values():
+    #         self.dic_targets[bopId] = main_city
+    #     else:
+    #         self.dic_targets[bopId] = soldier_bop.ObjPos
+    #     #移动
+    #     flag,l_path = self.genMoveAction(soldier_bop, main_city)
+    #     if flag and l_path:
+    #         self.obj_interface.setMove(soldier_bop.ObjID,l_path[0:1]) #调用接口函数执行机动动作
+    #         return True
+
+    def doMoveShootAction(self,att_bop):
+        ''' 只有坦克可以选择行进间射击'''
+
+        # 选择最大伤害的敌人
+        l_enemybops = self.dic_metadata['l_ubops'] #敌方列表
+        Flag = False
+        Obj = None
+        Maxf = 0
+        weapon = -1
+        res = False
+        for obj_bop in l_enemybops:
+            flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
+            if flag:
+                Flag = True
+                computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
+                if computeFlag == 0 and f > Maxf:
+                    Maxf = f
+                    Obj = obj_bop
+                    weapon = weaponID
+            if Flag and Obj is not None: #可以射击
+                exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
+                if exe_success == 0: # 执行成功
+                    res = True
+        return res
 
     def genShootAction(self, bop_attacker, bop_obj):
         '''
