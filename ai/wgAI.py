@@ -302,6 +302,7 @@ class AI:
     #     bopId = common.getBopIdentity(vehicle_bop)
 
     #     #设定目标
+    #     l_enemybops = self.dic_metadata['l_ubops'] #敌方棋子
     #     cur_ser = wgobject.bop2Ser(vehicle_bop)
     #     for ubop in l_enemybops:
     #         obj_ser = wgobject.bop2Ser(ubop)
