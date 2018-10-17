@@ -73,6 +73,16 @@ def tranlocInto4Str(y, x):
     except Exception as e:
         echosentence_color(('error in common tranlocInto4str():{}'.format(str(e))))
         raise
+def getAroundPos(pos):
+    row,col = cvtInt6loc2HexOffset(pos);
+    around = []
+    around.append(cvtHexOffset2Int6loc(row-1,col))
+    around.append(cvtHexOffset2Int6loc(row-1,col+1))
+    around.append(cvtHexOffset2Int6loc(row,col+1))
+    around.append(cvtHexOffset2Int6loc(row,col-1))
+    around.append(cvtHexOffset2Int6loc(row+1,col))
+    around.append(cvtHexOffset2Int6loc(row+1,col+1))
+    return around
 
 # 算子列表的筛选，查找，缩减工作: filter(function, list_bops)
 def getSpecifiedBopById(list_bops, bop_id):
@@ -96,6 +106,20 @@ def getSpecifiedBopByPos(list_bops, bop_pos, obj_type = -1):
         else:
             list_filtered_bops = [bop for bop in list_bops if bop.ObjPos == bop_pos and bop.ObjTypeX == obj_type]
             return list_filtered_bops[0] if len(list_filtered_bops) >= 1 else None
+    except Exception as e:
+        echosentence_color('common > getCorrespondingBopByPos():{}'.format(str(e)))
+        raise
+
+def getAllBopByPos(list_bops, bop_pos, obj_type = -1):
+    '''从指定的bop列表list_bops中找出位于指定位置bop_pos与类型obj_type的所有算子,没有返回None'''
+    try:
+        # list_filtered_bops = filter ( lambda cur_bop: cur_bop.ObjPos == bop_pos and cur_bop.ObjTypeX == obj_type , list_bops )
+        if obj_type == -1: # all types
+            list_filtered_bops = [bop for bop in list_bops if bop.ObjPos == bop_pos]
+            return None if len(list_filtered_bops) == 0 else list_filtered_bops
+        else:
+            list_filtered_bops = [bop for bop in list_bops if bop.ObjPos == bop_pos and bop.ObjTypeX == obj_type]
+            return list_filtered_bops if len(list_filtered_bops) >= 1 else None
     except Exception as e:
         echosentence_color('common > getCorrespondingBopByPos():{}'.format(str(e)))
         raise

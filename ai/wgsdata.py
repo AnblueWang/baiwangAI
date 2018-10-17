@@ -12,7 +12,7 @@ def updateNotMyCityList(l_cities, flag_color):
         common.echosentence_color('wgsdata > updateNotMyCityList():{}'.format(str(e)))
         raise
 
-def mainCity(l_cities, flag_color):
+def mainCity(l_cities):
     '''返回主要目标地'''
     try:
         assert len(l_cities) % 3 == 0
@@ -21,7 +21,7 @@ def mainCity(l_cities, flag_color):
         common.echosentence_color('wgsdata > mainCity():{}'.format(str(e)))
         raise
 
-def secondaryCity(l_cities, flag_color):
+def secondaryCity(l_cities):
     '''返回次要目标地'''
     try:
         assert len(l_cities) % 3 == 0

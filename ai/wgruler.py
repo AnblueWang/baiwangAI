@@ -10,6 +10,10 @@ def Shooting (list_g_stage , bop_attacker , bop_obj ):
     try:
         # 处于同格状态的算子不能做射击动作
         if bop_attacker.ObjTongge == 1: return 'N'
+        # 不能攻击处于同格的对方算子
+        if bop_obj.ObjTongge == 1: return 'N'
+        # # 不能调用已经射击过的算子进行攻击：
+        # if haveShooted(bop_attacker,list_g_stage): return 'N'
         # 被压制的人员算子无法射击(同时也无法机动)
         if bop_attacker.ObjTypeX == 2 and bop_attacker.ObjKeep == 1: return 'N'
         #  处于行军状态的算子(车辆算子)无法射击
