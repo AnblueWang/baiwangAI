@@ -82,7 +82,7 @@ class AI:
             wgruler.stackCheck(self.dic_metadata['l_ubops'])
             #同格检查
             wgruler.tonggeCheck(self.dic_metadata['l_obops'], self.dic_metadata['l_ubops'])
-            wgruler.tonggeCheck(self.dic_metadata['l_obops'], self.dic_metadata['l_ubops'])
+            wgruler.tonggeCheck(self.dic_metadata['l_ubops'], self.dic_metadata['l_obops'])
 
             #城市列表
             df_city = self.obj_interface.getCityData()
