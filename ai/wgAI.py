@@ -17,6 +17,8 @@ class AI:
             # l_obops:我方算子列表; l_ubops:敌方算子列表; l_cities:夺控点信息列表; l_stage:阶段信息
             self.dic_metadata = {'l_obops': [], 'l_ubops': [], 'l_cities': [], 'l_stage': []}
             self.dic_targets = {}
+            self.memory_obj = {}
+            self.main_city_occupied = False
             self.updateSDData() # 更新态势数据
             
         except Exception as e:
@@ -76,6 +78,7 @@ class AI:
                 bop = wgobject.Gen_Op(row)
                 bop = wgruler.cvtMapBop2AIBop(bop, self.dic_metadata['l_stage'])
                 self.dic_metadata['l_ubops'].append(bop)
+                self.memory_obj[common.getBopIdentity(bop)] = bop.ObjPos
 
             # 堆叠检查
             wgruler.stackCheck(self.dic_metadata['l_obops'])
@@ -91,6 +94,16 @@ class AI:
             dic_color2flag = {'GREEN': -1, 'RED': 0, 'BLUE': 1}
             for index, row in df_city.iterrows():
                 self.dic_metadata['l_cities'] += [row.MapID, dic_color2flag[row.UserFlag], row.C1]
+            
+            #检查主要目标点上是否有敌方棋子，如果主要目标地是敌方旗帜，先假设有敌方棋子
+            main_city = wgsdata.mainCity(self.dic_metadata['l_cities'])
+            if main_city in wgsdata.updateNotMyCityList(self.dic_metadata['l_cities'],self.flag_color):
+                self.main_city_occupied = True
+            for bop in self.dic_metadata['l_obops']:
+                _,dis = self.obj_interface.getLOS(main_city,bop.ObjPos)
+                if dis != None and dis >= 0:
+                    self.main_city_occupied = main_city in self.memory_obj.values()
+
         except Exception as e:
             common.echosentence_color(" " + str(e))
             self.__del__()
@@ -123,7 +136,7 @@ class AI:
         '''
         try:
             score = self.obj_interface.getScore()
-            return score["BlueObjScore"][0] == 0 or score["RedObjScore"][0] == 0
+            return score["BlueObjScore"][0] == 0 and score['RedScore'][0] > 0 or score["RedObjScore"][0] == 0 and score['BlueScore'][0]>0
         except Exception as e:
             common.echosentence_color(" " + str(e))
             self.__del__()
@@ -158,12 +171,7 @@ class AI:
             res = False
             while wgstage.isOpMoveHuanJie(self.dic_metadata['l_stage'],self.flag_color):
                 # 更新敌方棋子信息来进行可能的机会攻击
-                self.dic_metadata['l_ubops'] = []
-                df_enemyOp = self.obj_interface.getEnemyOperatorsData()
-                for index,row in df_enemyOp.iterrows(): #敌方算子不包括血量为0的算子
-                    bop = wgobject.Gen_Op(row)
-                    bop = wgruler.cvtMapBop2AIBop(bop, self.dic_metadata['l_stage'])
-                    self.dic_metadata['l_ubops'].append(bop)
+                self.updateSDData()
                 # 射击动作
                 for att_bop in self.dic_metadata['l_obops']:
                     for obj_bop in self.dic_metadata['l_ubops']:
@@ -336,18 +344,13 @@ class AI:
             
             #设定目标
             _,dis_to_main = self.obj_interface.getMapDistance(tank_bop.ObjPos,main_city)
+            self.updateSDData()
             
-            if dis_to_main >= 4 or (main_city not in self.dic_targets.values() and common.getAllBopByPos(self.dic_metadata['l_ubops'],main_city) == None):
+            if dis_to_main == 0 or main_city not in self.dic_targets.values() and not self.main_city_occupied:
                 self.dic_targets[bopId] = main_city
                 #移动
                 res = self.doMove(tank_bop) or res
-            elif len(self.dic_metadata['l_ubops']) == 0:
-                if self.flag_color == 0:
-                    self.dic_targets[bopId] = main_city + random.randint(-3,-1)
-                else:
-                    self.dic_targets[bopId] = main_city + random.randint(2,3)
-                res = self.doMove(tank_bop) or res
-            else:
+            elif len(self.dic_metadata['l_ubops']) > 0:
                 cur_ser = wgobject.bop2Ser(tank_bop)
                 ubop_target = None
                 min_dis = 10
@@ -362,11 +365,26 @@ class AI:
                 # obj_ser = wgobject.bop2Ser(ubop_target)
                 # _,flag_see = self.obj_interface.flagISU(cur_ser,obj_ser)
                 if tank_bop.ObjAttack == 0 and ubop_target:
-                    res = self.doMoveShootAction(tank_bop,ubop_target)
+                    res = self.doMoveShootAction(tank_bop,ubop_target) or res
                 #掩蔽
                 score = self.obj_interface.getScore()
                 if (self.flag_color == 0 and score["BlueScore"][0]+30<score["RedScore"][0] or self.flag_color == 1 and score["BlueScore"][0]>score["RedScore"][0]+30) and len(self.dic_metadata['l_ubops']) == 0:
                     self.obj_interface.setState(tank_bop.ObjID,2)
+                self.updateSDData()
+
+                if tank_bop.ObjAttack == 1:
+                    res = self.doMove(tank_bop) or res 
+
+            elif  dis_to_main >= 4 or self.main_city_occupied:
+                if self.flag_color == 0:
+                    self.dic_targets[bopId] = main_city-1
+                else:
+                    self.dic_targets[bopId] = main_city+2
+                #移动
+                res = self.doMove(tank_bop) or res
+            else:
+                self.dic_targets[bopId] = main_city
+                res = self.doMove(tank_bop) or res
             return res
 
         except Exception as e:
@@ -417,11 +435,13 @@ class AI:
                 self.dic_targets[bopId] = tonggeTarget
             elif main_city not in self.dic_targets.values() and flag_move:
                 self.dic_targets[bopId] = main_city
-            elif bopId not in self.dic_targets:
+
+            _,dis_to_main = self.obj_interface.getMapDistance(vehicle_bop.ObjPos,main_city)
+            if self.main_city_occupied:
                 if self.flag_color == 0:
                     self.dic_targets[bopId] = main_city + random.randint(-3,-1)
                 else:
-                    self.dic_targets[bopId] = main_city + random.randint(2,3)
+                    self.dic_targets[bopId] = main_city + random.randint(1,3)
 
             #下车
             if vehicle_bop.ObjSonNum == 1:  # 载人车辆
@@ -482,7 +502,7 @@ class AI:
             flag_occupy = enemy == None or (us != None and enemy!=None and len(us) <= len(enemy)) 
             flag,l_path = self.genMoveAction(soldier_bop, self.dic_targets[bopId])
             if flag and l_path and flag_occupy and not wgruler.haveMoved(soldier_bop,self.dic_metadata['l_stage']):
-                self.obj_interface.setMove(soldier_bop.ObjID,l_path[:1]) #调用接口函数执行机动动作
+                self.obj_interface.setMove(soldier_bop.ObjID,l_path[:]) #调用接口函数执行机动动作
                 res = True
             return res 
 
@@ -522,15 +542,18 @@ class AI:
                         if us != None and enemy != None and len(us) <= len(enemy):
                             flag_help = True
                             tonggeTarget = ubop.ObjPos
+
+                    if flag_help:
+                        self.dic_targets[common.getBopIdentity(att_bop)] = tonggeTarget
+                    elif obj_bop.ObjTypeX == 2 and obj_bop.ObjBlood <= att_bop.ObjBlood:
+                        self.dic_targets[common.getBopIdentity(att_bop)] = obj_bop.ObjPos
+                    else:
+                        self.genMoveShootBackTarget(att_bop,obj_bop) #后退三步
+
+                    res = self.doMove(att_bop) or res
             else:
                 print("could not attack",common.getBopIdentity(obj_bop))
 
-            if flag_help:
-                self.dic_targets[common.getBopIdentity(att_bop)] = tonggeTarget
-            elif att_bop.ObjAttack == 1:
-                self.genMoveShootBackTarget(att_bop,obj_bop) #后退三步
-            if att_bop.ObjAttack == 1:#射击后执行后退
-                res = self.doMove(att_bop) or res
             #掩蔽
             if len(self.dic_metadata['l_ubops']) == 0:
                 self.obj_interface.setState(att_bop.ObjID,2)
@@ -552,6 +575,7 @@ class AI:
             target = None
             flag,weaponID = self.genShootAction(att_bop, obj_bop)
             if flag:
+                self.dic_targets[common.getBopIdentity(att_bop)] = att_bop.ObjPos
                 return
             for pos in around:
                 if pos == att_bop.ObjPos:
@@ -600,12 +624,13 @@ class AI:
     def doMove(self, bop):
         #移动
         try:
+            main_city = wgsdata.mainCity(self.dic_metadata['l_cities'])
             bopId = common.getBopIdentity(bop)
             flag,l_path = self.genMoveAction(bop, self.dic_targets[bopId])
             if flag and l_path:
                 l = int(len(l_path)+1)//2 if len(l_path)>=4 else len(l_path)+1
                 l_path = l_path[:l]
-                if l_path[-1] == wgsdata.mainCity(self.dic_metadata['l_cities']) and len(l_path)>=2:
+                if l_path[-1] == main_city and len(l_path)>=2:
                     l_path = l_path[:-1]
                 self.obj_interface.setMove(bop.ObjID,l_path) #调用接口函数执行机动动作
                 self.updateSDData()
