@@ -136,7 +136,40 @@ class AI:
         '''
         try:
             score = self.obj_interface.getScore()
-            return score["BlueObjScore"][0] == 0 and score['RedScore'][0] > 0 or score["RedObjScore"][0] == 0 and score['BlueScore'][0]>0
+            not_my_city = wgsdata.updateNotMyCityList(self.dic_metadata['l_cities'],self.flag_color)
+            if self.flag_color == 0:
+                if score["RedObjScore"][0] == 0:
+                    return True
+                elif len(not_my_city) == 0:
+                    return True;
+            if self.flag_color == 1:
+                if score["BlueObjScore"][0] == 0:
+                    return True
+                elif len(not_my_city) == 0:
+                    return True;
+        except Exception as e:
+            common.echosentence_color(" " + str(e))
+            self.__del__()
+            raise
+        except KeyboardInterrupt as k:
+            common.echosentence_color(" " + str(k))
+            self.__del__()
+            raise
+
+    def moveToSecondary(self):
+        '''
+        是否应该占领次要目标地
+        '''
+        try:
+            score = self.obj_interface.getScore()
+            not_my_city = wgsdata.updateNotMyCityList(self.dic_metadata['l_cities'],self.flag_color)
+            if self.flag_color == 0:
+                if score["BlueObjScore"][0] == 0 or score["RedObjScore"][0]-score["BlueObjScore"][0] > 60 and len(not_my_city) == 1:
+                    return True
+            if self.flag_color == 1:
+                if score["RedObjScore"][0] == 0 or score["BlueObjScore"][0]-score["RedObjScore"][0] > 60 and len(not_my_city) == 1:
+                    return True
+            return False
         except Exception as e:
             common.echosentence_color(" " + str(e))
             self.__del__()
@@ -198,26 +231,6 @@ class AI:
             res = False
             # 更新敌方棋子信息来判断其是否处于同格从而避免攻击对方
             self.updateSDData()
-            # 射击动作
-            # 选择最大伤害的敌人
-            # for att_bop in self.dic_metadata['l_obops']:
-            #     Flag = False
-            #     Obj = None
-            #     Maxf = 0
-            #     weapon = -1
-            #     for obj_bop in self.dic_metadata['l_ubops']:
-            #         flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
-            #         if flag:
-            #             Flag = True
-            #             computeFlag, f = self.obj_interface.getAttackLevel(wgobject.bop2Ser(att_bop),wgobject.bop2Ser(obj_bop),int(weaponID))
-            #             if computeFlag == 0 and f > Maxf:
-            #                 Maxf = f
-            #                 Obj = obj_bop
-            #                 weapon = weaponID
-            #         if Flag and Obj != None: #可以射击
-            #             exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,Obj.ObjID,(int)(weapon)) #调用接口执行射击动作
-            #             if exe_success == 0: # 执行成功
-            #                 res = True
             for att_bop in self.dic_metadata['l_obops']:
                 for obj_bop in self.dic_metadata['l_ubops']:
                     flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
@@ -236,68 +249,6 @@ class AI:
             self.__del__()
             raise
 
-
-    def doMyMoveHuanJieAction(self):
-        try:
-            res = False
-            l_cities = self.dic_metadata['l_cities'] #夺控点列表
-
-            # 夺控动作
-            for cur_bop in self.dic_metadata['l_obops']:
-                if self.genOccupyAction(cur_bop): #判断是否可以夺控
-                    self.obj_interface.setOccupy(cur_bop.ObjID) #调用接口执行夺控动作
-                    res = True
-            
-            city_loc = wgsdata.mainCity(l_cities)
-            if city_loc in wgsdata.updateNotMyCityList(l_cities,self.flag_color) and common.getSpecifiedBopByPos(self.dic_metadata['l_ubops'], city_loc):
-                city_loc = wgsdata.secondaryCity(l_cities,self.flag_color)
-            # 机动动作
-            for cur_bop in self.dic_metadata['l_obops']:
-                flag_move = True
-                if cur_bop.ObjTypeX in [1,2]:
-                    '''，人和战车能观察到敌方算子且距离小于6，放弃机动机会'''
-                    cur_ser = wgobject.bop2Ser(cur_bop)
-                    for ubop in self.dic_metadata['l_ubops']:
-                        obj_ser = wgobject.bop2Ser(ubop)
-                        _,flag_see = self.obj_interface.flagISU(cur_ser,obj_ser)
-                        _,distance = self.obj_interface.getMapDistance(cur_bop.ObjPos,ubop.ObjPos)
-                        if flag_see and distance <= 6:
-                            flag_move = False
-                            break
-                if flag_move:
-                    if cur_bop.ObjPos != city_loc:
-                        if cur_bop.ObjTypeX == 0:
-                            flag,l_path = self.genMoveAction(cur_bop, city_loc+2)  # 判断能否执行机动动作，如果能，返回机动路径
-                        else:
-                            flag,l_path = self.genMoveAction(cur_bop, city_loc)
-                        if flag and l_path:
-                            self.obj_interface.setMove(cur_bop.ObjID,l_path) #调用接口函数执行机动动作
-                            res = True
-
-            # 人员下车
-            for cur_bop in self.dic_metadata['l_obops']:
-                if cur_bop.ObjTypeX == 1 and cur_bop.ObjSonNum == 1:  # 载人车辆
-                    _, dis = self.obj_interface.getMapDistance(cur_bop.ObjPos, city_loc) # 距离夺控点的距离
-                    if dis <= 3 or (dis < 6 and common.getSpecifiedBopByPos(self.dic_metadata['l_ubops'], city_loc)): # 距离目标<3 或者目标被占且<10 下车
-                        if self.genGetOffAction(cur_bop): #判断是否满足下车条件
-                            self.obj_interface.setGetoff(cur_bop.ObjID) # 调用接口执行下车动作
-                            res = True
-
-            # 射击动作
-            for att_bop in self.dic_metadata['l_obops']:
-                if att_bop.ObjTypeX == 0:
-                    res = self.doMoveShootAction(att_bop) or res
-
-            return res 
-        except Exception as e:
-            print('error in doMyMoveHuanJieAction(): ' + str(e))
-            self.__del__()
-            raise
-        except KeyboardInterrupt as k:
-            print('error in doMyMoveHuanJieAction(): ' + str(k))
-            self.__del__()
-            raise
-
     def doMyMoveAction(self):
         ''' 此时可能更新目标方位，默认目标为上次的目标位置'''
         try:
@@ -311,12 +262,15 @@ class AI:
                     self.dic_targets[bopId] = last_targets[bopId]
 
             for bop in self.dic_metadata['l_obops']:
-                if bop.ObjTypeX == 0:
-                    res = self.doTankMoveAction(bop) or res 
-                elif bop.ObjTypeX == 1:
-                    res = self.doVehicleMoveAction(bop) or res 
-                else:
+                if bop.ObjTypeX == 2:
                     res = self.doSoldierMoveAction(bop) or res 
+            for bop in self.dic_metadata['l_obops']:
+                if bop.ObjTypeX == 1:
+                    res = self.doVehicleMoveAction(bop) or res
+            for bop in self.dic_metadata['l_obops']:
+                if bop.ObjTypeX == 0:
+                    res = self.doTankMoveAction(bop) or res
+            
             return res 
         except Exception as e:
             print('error in doMyMoveAction(): ' + str(e))
@@ -346,7 +300,10 @@ class AI:
             _,dis_to_main = self.obj_interface.getMapDistance(tank_bop.ObjPos,main_city)
             self.updateSDData()
             
-            if dis_to_main == 0 or main_city not in self.dic_targets.values() and not self.main_city_occupied:
+            if self.moveToSecondary(): #占领次要目标地扩大比分
+                self.dic_targets[bopId] = wgsdata.secondaryCity(self.dic_metadata['l_cities'])
+                res = self.doMove(tank_bop) or res
+            elif dis_to_main == 0 or main_city not in self.dic_targets.values() and not self.main_city_occupied:
                 self.dic_targets[bopId] = main_city
                 #移动
                 res = self.doMove(tank_bop) or res
@@ -356,7 +313,7 @@ class AI:
                 min_dis = 10
                 for ubop in self.dic_metadata['l_ubops']: #找个最近的非同格目标进行行进间射击,优先堆叠的对象
                     if ubop.ObjTongge == 0 and (ubop_target == None or self.obj_interface.getMapDistance(tank_bop.ObjPos,ubop.ObjPos)[1] <= min_dis):
-                        if len(common.getAllBopByPos(self.dic_metadata['l_ubops'],ubop.ObjPos)) >= 2:
+                        if ubop.ObjBlood < 3 or len(common.getAllBopByPos(self.dic_metadata['l_ubops'],ubop.ObjPos)) >= 2:
                             min_dis = 0
                         else: 
                             _, min_dis = self.obj_interface.getMapDistance(tank_bop.ObjPos,ubop.ObjPos)
@@ -375,16 +332,16 @@ class AI:
                 if tank_bop.ObjAttack == 1:
                     res = self.doMove(tank_bop) or res 
 
-            elif  dis_to_main >= 4 or self.main_city_occupied:
+            else:
                 if self.flag_color == 0:
                     self.dic_targets[bopId] = main_city-1
                 else:
                     self.dic_targets[bopId] = main_city+2
                 #移动
                 res = self.doMove(tank_bop) or res
-            else:
-                self.dic_targets[bopId] = main_city
-                res = self.doMove(tank_bop) or res
+            # else:
+            #     self.dic_targets[bopId] = main_city
+            #     res = self.doMove(tank_bop) or res
             return res
 
         except Exception as e:
@@ -431,17 +388,28 @@ class AI:
                     flag_help = True
                     tonggeTarget = ubop.ObjPos
 
-            if flag_help:
-                self.dic_targets[bopId] = tonggeTarget
+            if self.moveToSecondary(): #占领次要目标地扩大比分
+                self.dic_targets[bopId] = wgsdata.secondaryCity(self.dic_metadata['l_cities'])
+                res = self.doMove(vehicle_bop) or res
+            elif flag_help:
+                self.dic_targets[bopId] = tonggeTarget #帮助同格本方棋子
             elif main_city not in self.dic_targets.values() and flag_move:
-                self.dic_targets[bopId] = main_city
+                self.dic_targets[bopId] = main_city #设定目标为主要目标地
+            else:
+                if vehicle_bop.ObjSonNum == 1:
+                    self.dic_targets[bopId] = main_city
+                else:
+                    if self.flag_color == 0:
+                        self.dic_targets[bopId] = main_city +3
+                    else:
+                        self.dic_targets[bopId] = main_city
 
             _,dis_to_main = self.obj_interface.getMapDistance(vehicle_bop.ObjPos,main_city)
             if self.main_city_occupied:
                 if self.flag_color == 0:
-                    self.dic_targets[bopId] = main_city + random.randint(-3,-1)
+                    self.dic_targets[bopId] = main_city - 2
                 else:
-                    self.dic_targets[bopId] = main_city + random.randint(1,3)
+                    self.dic_targets[bopId] = main_city + 1
 
             #下车
             if vehicle_bop.ObjSonNum == 1:  # 载人车辆
@@ -521,13 +489,10 @@ class AI:
             print(att_bop.ObjID,"doMoveShootAction")
             res = False
             flag_help = False
-            self.dic_metadata['l_ubops'] = self.dic_metadata['l_obops']
             #移动到旁边然后攻击对方，攻击完之后后退
             self.genMoveShootTarget(att_bop,obj_bop)
-
             res = self.doMove(att_bop)
           
-            self.dic_metadata['l_ubops'] = self.dic_metadata['l_ubops'] #敌方列表
             flag,weaponID = self.genShootAction(att_bop, obj_bop) #判断是否可以射击,若可以射击，返回最佳射击武器
             if flag: #可以射击
                 exe_success,_ = self.obj_interface.setFire(att_bop.ObjID,obj_bop.ObjID,(int)(weaponID)) #调用接口执行射击动作
@@ -552,6 +517,7 @@ class AI:
 
                     res = self.doMove(att_bop) or res
             else:
+                print(att_bop.ObjStep, "jidongli ", att_bop.ObjStepMax)
                 print("could not attack",common.getBopIdentity(obj_bop))
 
             #掩蔽
@@ -571,16 +537,14 @@ class AI:
     def genMoveShootTarget(self,att_bop,obj_bop):
         #寻找行进间射击的目标位置，选取目标棋子周围最近的没有其它棋子的位置
         try:
-            around =  common.getAroundPos(obj_bop.ObjPos)
+            #around = common.getAroundPos(obj_bop.ObjPos)
+            around = [80048,80049,80047,80045,70041,80050,att_bop.ObjPos+2,att_bop.ObjPos-2,att_bop.ObjPos+1,att_bop.ObjPos-1]
             target = None
-            flag,weaponID = self.genShootAction(att_bop, obj_bop)
-            if flag:
-                self.dic_targets[common.getBopIdentity(att_bop)] = att_bop.ObjPos
-                return
             for pos in around:
                 if pos == att_bop.ObjPos:
                     continue
-                if common.getAllBopByPos(self.dic_metadata['l_ubops'],pos) == None:
+                los = self.obj_interface.getLOS(pos,obj_bop.ObjPos)
+                if los[0] == 0 and los[1]>=0 and common.getAllBopByPos(self.dic_metadata['l_ubops'],pos) == None:
                     if target == None or self.obj_interface.getMapDistance(pos,att_bop.ObjPos) <= self.obj_interface.getMapDistance(target,att_bop.ObjPos):
                         flag_set = True
                         flag,l_path = self.genMoveAction(att_bop,pos)
@@ -590,7 +554,8 @@ class AI:
                                     flag_set = False 
                         if flag_set:
                             target = pos
-            self.dic_targets[common.getBopIdentity(att_bop)] = target
+            if target:
+                self.dic_targets[common.getBopIdentity(att_bop)] = target
 
         except Exception as e:
             print('error in genMoveShootTarget(): ' + str(e))
@@ -604,12 +569,32 @@ class AI:
     def genMoveShootBackTarget(self,att_bop,obj_bop):
         #寻找行进间射击回退的位置
         try:
-            att_row, att_col = common.cvtInt6loc2HexOffset(att_bop.ObjPos)
-            obj_row, obj_col = common.cvtInt6loc2HexOffset(obj_bop.ObjPos)
-            t_row = obj_row + 3*(att_row-obj_row)
-            t_col = obj_col + 3*(att_col-obj_col)
-            target = common.cvtHexOffset2Int6loc(t_row,t_col)
-            self.dic_targets[common.getBopIdentity(att_bop)] = target
+            around = [80047,80048,80045,70041,80050,80052,80049,80051,70051,70053,80054,80053]
+            target = None
+            for pos in around:
+                if pos == att_bop.ObjPos:
+                    continue
+                flag_pos = True
+                for bop in self.dic_metadata['l_ubops']:
+                    los = self.obj_interface.getLOS(pos,bop.ObjPos)
+                    if los[0] == 0 and los[1]<0:
+                        flag_pos = True
+                    else:
+                        flag_pos = False
+                        break
+                if flag_pos and common.getAllBopByPos(self.dic_metadata['l_ubops'],pos) == None:
+                    if target == None or self.obj_interface.getMapDistance(pos,att_bop.ObjPos) < self.obj_interface.getMapDistance(target,att_bop.ObjPos):
+                        flag_set = True
+                        flag,l_path = self.genMoveAction(att_bop,pos)
+                        if l_path != None:
+                            for p in l_path:
+                                if common.getAllBopByPos(self.dic_metadata['l_ubops'],p) != None:
+                                    flag_set = False 
+                        if flag_set:
+                            target = pos
+            if target:
+                self.dic_targets[common.getBopIdentity(att_bop)] = target
+
             print("go back to",target)
 
         except Exception as e:

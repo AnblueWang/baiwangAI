@@ -9,11 +9,7 @@ def Shooting (list_g_stage , bop_attacker , bop_obj ):
     '''
     try:
         # 处于同格状态的算子不能做射击动作
-        if bop_attacker.ObjTongge == 1: return 'N'
-        # 不能攻击处于同格的对方算子
-        if bop_obj.ObjTongge == 1: return 'N'
-        # # 不能调用已经射击过的算子进行攻击：
-        # if haveShooted(bop_attacker,list_g_stage): return 'N'
+        if bop_attacker.ObjTongge == 1 or bop_obj.ObjTongge == 1: return 'N' #2018年10月24日添加：处于同格的算子不能被射击
         # 被压制的人员算子无法射击(同时也无法机动)
         if bop_attacker.ObjTypeX == 2 and bop_attacker.ObjKeep == 1: return 'N'
         #  处于行军状态的算子(车辆算子)无法射击
@@ -25,6 +21,8 @@ def Shooting (list_g_stage , bop_attacker , bop_obj ):
             if wgstage.isMoveHuanJie(list_g_stage): # 机动环节
                 if bop_attacker.ObjTypeX == 0:# 坦克
                     if bop_attacker.ObjAttack == 0:# 未射击过
+                        if bop_attacker.ObjStep == bop_attacker.ObjStepMax: # 2018年10月24日添加：坦克未机动不能射击
+                            return 'N'
                         return 'MS' if bop_attacker.ObjStep > 0  else 'S'
                     else: return 'N' # 已射击过
                 if bop_attacker.ObjTypeX >= 1:# 战车与人员
@@ -48,7 +46,7 @@ def Shooting (list_g_stage , bop_attacker , bop_obj ):
     except Exception as e:
         common.echosentence_color('wgruler > Shooting():{}'.format (str(e)))
         raise
-
+        
 def Moving( list_g_stage, cur_bop):
     ''' 外部规则针对机动动作的判断(只关注机动动作)
         第一批: 'M' 能够进行机动/ 'N' 不能进行机动
